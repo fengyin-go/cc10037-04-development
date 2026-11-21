@@ -69,6 +69,42 @@ npm run dev
 | 成本分析 | `cost_analysis` | 成本快照 | 快照日期、管线标识、计算时长 |
 | 告警策略 | `alert_policy` | 告警规则 | 规则名称、监控对象、告警条件 |
 
+## 分区可读明细
+
+分区扫描报告只把空分区折成一个汇总数，无法判断销售日加工的两份输入
+（`ods.ods_order_info` 订单、`ods.ods_region_info` 地区）是否可读。
+`/partition_readability` 页面和 `/api/readability/*` 接口提供按扫描修订组织的明细视图：
+
+- 每个上游分区落在「确认零行」「可读有行」「未实测」三者之一；
+  确认零行是有效证据，未实测不是，且不能按零行处理。
+- 明细只认同一扫描修订内的实测；补报必须指定修订并写入该修订，
+  其他轮次的空分区结果不会替代缺失数据。
+- 视图同时给出本次能否提交的判断：可先提交哪些日期、还要等哪些日期，
+  以及每种选择会开放哪些读数。
+- 调整扫描范围会重算关联日期上尚未提交的批次；已提交/已运行批次
+  保留提交时固化的计划数据源，仍可追溯。
+
+依赖调度读取该明细生成「销售日加工」批次，每个加工日期一个批次，
+带实际会读取的订单分区和地区分区；证据齐全的批次直接提交，其余进入
+「等待证据」，补报后刷新明细即可释放。
+
+```bash
+# 查看修订与可读明细
+curl 'http://127.0.0.1:8000/api/readability/revisions'
+curl 'http://127.0.0.1:8000/api/readability/readings?revision=REV-2026-11-20-A&dates=2026-11-16,2026-11-17'
+# 补报实测（零行必须显式 rows=0）
+curl -X POST http://127.0.0.1:8000/api/readability/readings \
+  -H 'Content-Type: application/json' \
+  -d '{"revision":"REV-2026-11-20-A","table":"ods.ods_region_info","partition":"2026-11-16","rows":0}'
+# 生成销售日加工批次
+curl -X POST http://127.0.0.1:8000/api/readability/sales-batches \
+  -H 'Content-Type: application/json' \
+  -d '{"revision":"REV-2026-11-20-A","dates":["2026-11-16","2026-11-17"]}'
+# 补报后刷新明细，释放等待批次
+curl -X POST http://127.0.0.1:8000/api/readability/sales-batches/refresh \
+  -H 'Content-Type: application/json' -d '{"revision":"REV-2026-11-20-A"}'
+```
+
 ## 约定
 
 - 全部模块共享`frontend/src/views/WorkbenchView.vue|tsx`和一套资源路由。

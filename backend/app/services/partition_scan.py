@@ -75,6 +75,9 @@ class PartitionScanService(BaseModuleService):
 
         筛选空分区数量大于零的扫描报告，
         返回空分区详情供清理和优化建议。
+
+        注意：这里只给出按报告折叠后的空分区总数，无法判断哪些上游输入
+        可读。依赖调度请改用 partition_readability 的分区可读明细。
         """
         reports = self.query_by_table(table_name)
         empty_list: list[dict[str, Any]] = []
@@ -86,6 +89,7 @@ class PartitionScanService(BaseModuleService):
                     "empty_count": empty_count,
                     "total_partitions": report.get("分区总数"),
                     "suggestion": "建议清理空分区或调整分区策略",
+                    "detail_endpoint": "/api/readability/readings",
                 })
 
         return empty_list
